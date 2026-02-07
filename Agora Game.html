@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Coding Master</title>
+    <style>
+        /* 네온 사이버펑크 스타일 */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #0d0d0d;
+            font-family: 'Courier New', Courier, monospace;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+
+        #game-container {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            border: 2px solid #00ffcc;
+            background: radial-gradient(circle, #1a1a1a 0%, #000000 100%);
+            box-shadow: 0 0 20px #00ffcc;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        /* UI 패널 */
+        #ui-panel {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            padding: 10px 0;
+            font-size: 1.2rem;
+            text-shadow: 0 0 5px #fff;
+        }
+
+        .stat-box {
+            background: rgba(0, 255, 204, 0.1);
+            padding: 10px 20px;
+            border: 1px solid #00ffcc;
+            border-radius: 5px;
+        }
+
+        /* 입력창 */
+        #input-area {
+            margin-top: 20px;
+            position: relative;
+        }
+
+        #word-input {
+            width: 400px;
+            padding: 15px;
+            font-size: 1.5rem;
+            background: transparent;
+            border: 2px solid #ff00ff;
+            color: #fff;
+            text-align: center;
+            outline: none;
+            border-radius: 30px;
+            box-shadow: 0 0 15px #ff00ff;
+            transition: all 0.3s;
+        }
+
+        #word-input:focus {
+            box-shadow: 0 0 25px #ff00ff, inset 0 0 10px #ff00ff;
+        }
+
+        /* 떨어지는 단어들 */
+        .word {
+            position: absolute;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #00ffcc;
+            text-shadow: 0 0 5px #00ffcc;
+            user-select: none;
+        }
+
+        .word.danger {
+            color: #ff3333; /* 바닥에 가까워지면 빨간색 */
+            text-shadow: 0 0 10px #ff0000;
+        }
+
+        /* 게임 오버 / 시작 화면 */
+        #modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00ffcc;
+            padding: 40px;
+            text-align: center;
+            z-index: 10;
+            box-shadow: 0 0 30px #00ffcc;
+            border-radius: 10px;
+        }
+
+        button {
+            background: #00ffcc;
+            color: #000;
+            border: none;
+            padding: 10px 30px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+            border-radius: 5px;
+        }
+
+        button:hover {
+            background: #fff;
+            box-shadow: 0 0 15px #fff;
+        }
+
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <div class="stat-box">SCORE: <span id="score">0</span></div>
+        <div class="stat-box">LIVES: <span id="lives">5</span></div>
+    </div>
+
+    <div id="game-container">
+        <div id="modal">
+            <h1 id="modal-title" style="color:#00ffcc; margin-top:0;">VIBE TYPING</h1>
+            <p id="modal-desc">당신의 코딩 속도를 보여주세요!</p>
+            <p style="font-size:0.9rem; color:#aaa;">(Enter 키를 칠 필요 없이 단어만 맞추면 됩니다)</p>
+            <button onclick="startGame()">GAME START</button>
+        </div>
+    </div>
+
+    <div id="input-area">
+        <input type="text" id="word-input" placeholder="Type here..." autocomplete="off" autofocus>
+    </div>
+
+<script>
+    // 1. 게임 설정 및 단어 리스트 (우리가 배웠던 내용 포함!)
+    const words = [
+        "Gemini", "Python", "Google", "AppSheet", "Script", 
+        "Automation", "Inventory", "Status", "Fail", "Warning", 
+        "Pass", "QC", "Inspector", "Galaxy", "S23", "OLED", 
+        "Battery", "Mainboard", "Camera", "Algorithm", "Model",
+        "API", "Key", "Security", "Variable", "Function", 
+        "Vibe", "Coding", "Report", "Email", "Trigger", "Deploy"
+    ];
+
+    let score = 0;
+    let lives = 5;
+    let isPlaying = false;
+    let dropSpeed = 2; // 초기 속도
+    let spawnRate = 1000; // 단어 생성 주기 (ms)
+    
+    let activeWords = []; // 현재 화면에 있는 단어 객체들
+    let gameLoop;
+    let spawner;
+
+    const container = document.getElementById('game-container');
+    const input = document.getElementById('word-input');
+    const scoreEl = document.getElementById('score');
+    const livesEl = document.getElementById('lives');
+    const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modal-title');
+    const modalDesc = document.getElementById('modal-desc');
+
+    // 2. 게임 시작
+    function startGame() {
+        // 초기화
+        score = 0;
+        lives = 5;
+        dropSpeed = 2;
+        spawnRate = 1000;
+        activeWords.forEach(w => w.element.remove());
+        activeWords = [];
+        isPlaying = true;
+
+        updateUI();
+        modal.classList.add('hidden');
+        input.value = '';
+        input.focus();
+
+        // 루프 시작
+        gameLoop = requestAnimationFrame(updateGame);
+        spawner = setTimeout(spawnWord, spawnRate);
+    }
+
+    // 3. 단어 생성
+    function spawnWord() {
+        if (!isPlaying) return;
+
+        const wordText = words[Math.floor(Math.random() * words.length)];
+        const wordEl = document.createElement('div');
+        wordEl.classList.add('word');
+        wordEl.innerText = wordText;
+
+        // 랜덤 가로 위치 (0 ~ 700px)
+        const xPos = Math.floor(Math.random() * (container.clientWidth - 100));
+        wordEl.style.left = `${xPos}px`;
+        wordEl.style.top = '0px';
+
+        container.appendChild(wordEl);
+
+        activeWords.push({
+            element: wordEl,
+            text: wordText,
+            y: 0
+        });
+
+        // 난이도 조절: 점수에 따라 속도 증가
+        if (score > 100) dropSpeed = 3;
+        if (score > 200) dropSpeed = 4;
+        if (score > 300) dropSpeed = 5;
+        if (score > 300) spawnRate = 800;
+
+        // 다음 생성 예약
+        spawner = setTimeout(spawnWord, spawnRate);
+    }
+
+    // 4. 게임 업데이트 루프 (애니메이션)
+    function updateGame() {
+        if (!isPlaying) return;
+
+        // 모든 단어 아래로 이동
+        activeWords.forEach((wordObj, index) => {
+            wordObj.y += dropSpeed;
+            wordObj.element.style.top = `${wordObj.y}px`;
+
+            // 바닥에 닿았을 때 (높이 600 - 단어높이 약 30)
+            if (wordObj.y > 570) {
+                // 생명 감소
+                lives--;
+                updateUI();
+                wordObj.element.remove();
+                activeWords.splice(index, 1);
+                
+                // 화면 흔들림 효과 (데미지)
+                container.style.borderColor = '#ff0000';
+                setTimeout(() => container.style.borderColor = '#00ffcc', 100);
+
+                if (lives <= 0) gameOver();
+            }
+        });
+
+        if (isPlaying) requestAnimationFrame(updateGame);
+    }
+
+    // 5. 입력 감지
+    input.addEventListener('input', () => {
+        if (!isPlaying) return;
+
+        const typed = input.value.trim(); // 공백 제거
+
+        // 현재 떠있는 단어 중 일치하는 것이 있는지 확인
+        const matchIndex = activeWords.findIndex(w => w.text === typed || w.text.toLowerCase() === typed.toLowerCase());
+
+        if (matchIndex !== -1) {
+            // 정답!
+            score += 10;
+            updateUI();
+            
+            // 효과: 터지는 느낌
+            const target = activeWords[matchIndex];
+            createExplosion(target.element.style.left, target.element.style.top);
+            
+            target.element.remove();
+            activeWords.splice(matchIndex, 1);
+            input.value = ''; // 입력창 비우기
+        }
+    });
+
+    // 6. 유틸리티 함수들
+    function updateUI() {
+        scoreEl.innerText = score;
+        livesEl.innerText = lives;
+    }
+
+    function createExplosion(x, y) {
+        // 간단한 펑 효과 (선택 사항)
+        const boom = document.createElement('div');
+        boom.style.position = 'absolute';
+        boom.style.left = x;
+        boom.style.top = y;
+        boom.style.color = '#fff';
+        boom.style.fontWeight = 'bold';
+        boom.innerText = '+10';
+        boom.style.textShadow = '0 0 10px #fff';
+        container.appendChild(boom);
+        
+        setTimeout(() => boom.remove(), 500);
+    }
+
+    function gameOver() {
+        isPlaying = false;
+        clearTimeout(spawner);
+        cancelAnimationFrame(gameLoop);
+        
+        modalTitle.innerText = "GAME OVER";
+        modalTitle.style.color = "#ff0000";
+        modalDesc.innerText = `최종 점수: ${score}점\n훌륭한 바이브였습니다!`;
+        modal.classList.remove('hidden');
+    }
+</script>
+</body>
+</html>
